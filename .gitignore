@@ -1,3 +1,4 @@
 *.env
 nfl_data/
-util/__pycache__/
+**/__pycache__/
+src/mlruns/
