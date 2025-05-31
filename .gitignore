@@ -2,3 +2,4 @@
 nfl_data/
 **/__pycache__/
 src/mlruns/
+nfl_venv/
