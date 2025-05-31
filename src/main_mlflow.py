@@ -200,6 +200,7 @@ def main():
             # --- After the loop, for the PARENT run ---
             print("\n--- Final Model Comparison (Logging to Parent Run) ---")
             comparison_df = pd.DataFrame(results).T
+            comparison_df.index.name = 'model_name'
             print(comparison_df)
 
             with tempfile.NamedTemporaryFile(mode='w+', suffix='.csv', delete=False) as tmp_comparison_file:
