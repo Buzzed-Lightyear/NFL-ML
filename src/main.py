@@ -1,17 +1,14 @@
 import pandas as pd
 from preprocessing.load_data import load_nfl_data
 from preprocessing.prepare_data import split_and_prepare_data, scale_features
-from models.random_forest_model import create_rf_model, train_model as train_rf
-from models.svm_model import create_svm_model, train_model as train_svm
-from models.mlp_model import create_mlp_model, train_model as train_mlp
-from models.xgboost_model import create_xgb_model, train_model as train_xgb
 from evaluation.metrics_calculator import calculate_classification_metrics
 from evaluation.plotting import (
     plot_confusion_matrix_heatmap,
     plot_roc_auc_curve,
     plot_model_feature_importances
 )
-from config.model_config import MODEL_PARAMS, TEST_SIZE, RANDOM_STATE, TARGET_COLUMN
+from config.model_config import MODEL_PARAMS, TEST_SIZE, RANDOM_STATE, TARGET_COLUMN, MODELS_TO_TRAIN
+from models.registry import get_model
 
 def main():
     try:
@@ -30,24 +27,23 @@ def main():
         
         # Dictionary to store results
         results = {}
-        
-        # Dictionary mapping model names to their creation and training functions
-        model_functions = {
-            'Random Forest': (create_rf_model, train_rf),
-            'SVM': (create_svm_model, train_svm),
-            'MLP': (create_mlp_model, train_mlp),
-            'XGBoost': (create_xgb_model, train_xgb)
+
+        model_name_map = {
+            'rf': 'Random Forest',
+            'svm': 'SVM',
+            'mlp': 'MLP',
+            'xgb': 'XGBoost',
         }
-        
+
         # Train and evaluate each model
-        for model_name, (create_func, train_func) in model_functions.items():
-            print(f"\n--- Training {model_name} Model ---")
-            
-            # Create model instance
-            model = create_func(MODEL_PARAMS[model_name])
-            
+        for model_key in MODELS_TO_TRAIN:
+            readable_name = model_name_map.get(model_key, model_key)
+            print(f"\n--- Training {readable_name} Model ---")
+
+            model, train_func = get_model(model_key)
+
             # Special handling for SVM (needs scaling)
-            if model_name == 'SVM':
+            if model_key == 'svm':
                 X_train_scaled, X_test_scaled, _ = scale_features(X_train, X_test)
                 model = train_func(model, X_train_scaled, y_train)
                 y_pred = model.predict(X_test_scaled)
@@ -56,21 +52,21 @@ def main():
                 model = train_func(model, X_train, y_train)
                 y_pred = model.predict(X_test)
                 y_pred_proba = model.predict_proba(X_test)[:, 1]
-            
+
             # Calculate metrics
-            metrics = calculate_classification_metrics(y_test, y_pred)
-            results[model_name] = metrics
-            
+            metrics = calculate_classification_metrics(y_test, y_pred, y_pred_proba)
+            results[readable_name] = metrics
+
             # Print metrics
-            print(f"\n--- {model_name} Model Evaluation Metrics: ---")
+            print(f"\n--- {readable_name} Model Evaluation Metrics: ---")
             for metric, value in metrics.items():
                 print(f"{metric.capitalize()}: {value:.4f}")
-            
+
             # Generate plots
-            plot_confusion_matrix_heatmap(y_test, y_pred, model_name)
-            plot_roc_auc_curve(y_test, y_pred_proba, model_name)
-            plot_model_feature_importances(model, feature_names, model_name)
-        
+            plot_confusion_matrix_heatmap(y_test, y_pred, readable_name)
+            plot_roc_auc_curve(y_test, y_pred_proba, readable_name)
+            plot_model_feature_importances(model, feature_names, readable_name)
+
         # Print comparison of all models
         print("\n--- Model Comparison ---")
         comparison_df = pd.DataFrame(results).T
