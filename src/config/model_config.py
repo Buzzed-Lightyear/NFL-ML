@@ -7,6 +7,16 @@ TEST_SIZE = 0.20
 RANDOM_STATE = 42
 TARGET_COLUMN = 'team1_win'
 
+# Data years configuration
+DATA_YEARS = {
+    'train': [2018, 2019, 2020, 2021],
+    'eval': [2022],
+    'test': [2023],
+}
+
+# Models configuration
+MODELS_TO_TRAIN = ['rf', 'xgb', 'svm', 'mlp']
+
 # Model hyperparameters
 RANDOM_FOREST_PARAMS = {
     'n_estimators': 100,
@@ -49,8 +59,8 @@ XGBOOST_PARAMS = {
 
 # Dictionary mapping model names to their parameters
 MODEL_PARAMS = {
-    'Random Forest': RANDOM_FOREST_PARAMS,
-    'SVM': SVM_PARAMS,
-    'MLP': MLP_PARAMS,
-    'XGBoost': XGBOOST_PARAMS
-} 
+    'rf': RANDOM_FOREST_PARAMS,
+    'svm': SVM_PARAMS,
+    'mlp': MLP_PARAMS,
+    'xgb': XGBOOST_PARAMS,
+}
