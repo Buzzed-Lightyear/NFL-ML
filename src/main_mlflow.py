@@ -87,10 +87,24 @@ def parse_args():
                         help='Tag describing the run type')
     parser.add_argument('--split-id', type=str, default=None,
                         help='Optional predefined split identifier')
+    parser.add_argument(
+        '--ece-bins',
+        type=int,
+        default=10,
+        help=(
+            'Number of bins for additional ECE/MCE metrics (2-100). '
+            'Standard metrics with 10 and 15 bins are always included.'
+        ),
+    )
     return parser.parse_args()
 
 def main():
     args = parse_args()
+
+    if args.ece_bins < 2 or args.ece_bins > 100:
+        raise ValueError(
+            f"--ece-bins must be between 2 and 100, got {args.ece_bins}"
+        )
 
     try:
         mlflow.set_experiment(args.experiment_name)
@@ -193,7 +207,12 @@ def main():
                         signature_input_data = X_train.head()
                         predictions_for_signature = model.predict(X_eval.head())
 
-                    metrics = calculate_classification_metrics(y_eval, y_pred, y_pred_proba)
+                    extra_bins = (
+                        args.ece_bins if args.ece_bins not in {10, 15} else None
+                    )
+                    metrics = calculate_classification_metrics(
+                        y_eval, y_pred, y_pred_proba, ece_bins=extra_bins
+                    )
                     mlflow.log_metrics(metrics)
                     results[readable_name] = metrics
 
