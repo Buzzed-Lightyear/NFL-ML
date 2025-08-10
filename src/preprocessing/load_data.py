@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from glob import glob
 
-def load_nfl_data(data_dir='../data/processed'):
+def load_nfl_data(data_dir='data/processed'):
     """
     Loads all 'final-<year>.csv' files from subdirectories in the given data_dir.
     Returns a single combined DataFrame if all files have matching columns.
