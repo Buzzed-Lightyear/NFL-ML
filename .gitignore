@@ -1,5 +1,8 @@
 *.env
 nfl_data/
-**/__pycache__/
+**/__pycache__/ 
+mlruns/ 
 src/mlruns/
-nfl_venv/
+nfl_venv/ 
+NFL_Virtual/
+NFL_Virtual2/

@@ -1,11 +1,25 @@
 import os
 import pandas as pd
 from glob import glob
+import re
+from typing import Iterable, Optional
 
-def load_nfl_data(data_dir='../data/processed'):
-    """
-    Loads all 'final-<year>.csv' files from subdirectories in the given data_dir.
-    Returns a single combined DataFrame if all files have matching columns.
+
+def load_nfl_data(data_dir: str = 'data/processed', years: Optional[Iterable[int]] = None) -> pd.DataFrame:
+    """Load all ``final-<year>.csv`` files for the requested years.
+
+    Parameters
+    ----------
+    data_dir: str
+        Base directory containing year subdirectories with ``final-<year>.csv`` files.
+    years: Iterable[int], optional
+        If provided, only files whose season matches one of these years will be
+        loaded.
+
+    Returns
+    -------
+    pd.DataFrame
+        Combined data for the selected seasons with a ``season`` column added.
     """
     combined_df = pd.DataFrame()
     file_paths = glob(os.path.join(data_dir, '*', 'final-*.csv'))
@@ -14,8 +28,14 @@ def load_nfl_data(data_dir='../data/processed'):
     columns_set = None
 
     for file_path in sorted(file_paths):
+        match = re.search(r'final-(\d{4})', os.path.basename(file_path))
+        year = int(match.group(1)) if match else None
+        if years is not None and year not in years:
+            continue
+
         try:
             df = pd.read_csv(file_path)
+            df['season'] = year
             print(f"Loaded {file_path}, shape: {df.shape}")
 
             if columns_set is None:
@@ -37,4 +57,4 @@ def load_nfl_data(data_dir='../data/processed'):
     else:
         print("\nNo valid data files loaded.")
 
-    return combined_df 
+    return combined_df
