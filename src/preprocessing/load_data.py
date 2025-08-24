@@ -58,3 +58,27 @@ def load_nfl_data(data_dir: str = 'data/processed', years: Optional[Iterable[int
         print("\nNo valid data files loaded.")
 
     return combined_df
+
+
+def load_via_spec(spec_path: str) -> pd.DataFrame:
+    """Load data using a YAML spec via the unified adapter.
+
+    This helper preserves backwards compatibility while providing an entry
+    point for the new schema-driven loader. The adapter returns both the
+    modeling DataFrame and metadata, but this wrapper mirrors the old loader
+    by returning only the DataFrame.
+
+    Parameters
+    ----------
+    spec_path: str
+        Path to the dataset specification file.
+
+    Returns
+    -------
+    pd.DataFrame
+        Modeling table as produced by the adapter.
+    """
+    from .unified_loader import load_dataset_from_spec
+
+    df, _ = load_dataset_from_spec(spec_path)
+    return df

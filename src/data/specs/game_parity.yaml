@@ -1,0 +1,24 @@
+dataset_name: "game_parity"
+csv_glob: "data/processed/*/final-*.csv"
+data_grain: "game"
+modeling_grain: "game"
+id_cols: []
+target:
+  name: "team1_win"
+  derive:
+    type: "existing"
+team_alignment:
+  canonical: "home_away"
+  mapping: {}
+aggregation:
+  by: ["game_id"]
+  reducers:
+    mean: []
+    sum: []
+    max: []
+    last: []
+features:
+  include_regex: [".*"]
+  exclude_regex: ["^source_path$"]
+provenance:
+  allow_post_final_columns: true
