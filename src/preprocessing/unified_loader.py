@@ -17,7 +17,7 @@ from typing import Tuple
 
 import pandas as pd
 
-from src.data.adapter import prepare_model_table
+from data.adapter import prepare_model_table
 
 
 def load_dataset_from_spec(spec_path: str) -> Tuple[pd.DataFrame, dict]:
