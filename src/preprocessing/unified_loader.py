@@ -34,4 +34,7 @@ def load_dataset_from_spec(spec_path: str) -> Tuple[pd.DataFrame, dict]:
         ``(df, meta)`` where ``df`` is the modeling DataFrame and ``meta``
         contains metadata such as the feature list and an input fingerprint.
     """
+    # The adapter can ingest game-level data directly or aggregate drive-level
+    # inputs down to one row per game based on the provided spec.
     return prepare_model_table(spec_path)
+

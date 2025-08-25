@@ -66,6 +66,16 @@ def validate_schema(df: pd.DataFrame, spec: Spec) -> None:
     if missing_ids:
         raise ValueError(f"Missing required id_cols: {missing_ids}")
 
+    if spec.data_grain == "drive":
+        required = {"drive_id", "posteam", "defteam"}
+        missing = [col for col in required if col not in df.columns]
+        if missing:
+            raise ValueError(
+                "Drive-level data must include columns: {missing}".format(
+                    missing=missing
+                )
+            )
+
     if spec.target.name not in df.columns and (
         not spec.target.derive or spec.target.derive.type != "from_scores"
     ):
@@ -84,16 +94,37 @@ def validate_schema(df: pd.DataFrame, spec: Spec) -> None:
 
 
 def align_team_perspective(df: pd.DataFrame, spec: Spec) -> pd.DataFrame:
-    """Align team perspective according to the spec.
-
-    For Phase A the input data already follows the ``home_away`` canonical form
-    so this function currently passes the data through unchanged.
-    """
+    """Align team perspective according to the spec."""
     if spec.team_alignment.canonical != "home_away":
         raise NotImplementedError(
             f"Unsupported canonical perspective: {spec.team_alignment.canonical}"
         )
-    # Placeholder for future mapping logic when different column naming is used.
+
+    if spec.data_grain != "drive":
+        # For game-level data, pass through unchanged.
+        return df
+
+    required_cols = ["home_team", "away_team", "posteam"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Missing required columns for team alignment: {missing}"
+        )
+
+    id_set = set(spec.id_cols + ["source_path", spec.target.name])
+    team_cols = [
+        c
+        for c in df.columns
+        if c not in id_set
+        and not c.startswith("home_")
+        and not c.startswith("away_")
+    ]
+
+    for col in team_cols:
+        df[f"team1_{col}"] = df[col].where(df["posteam"] == df["home_team"])
+        df[f"team2_{col}"] = df[col].where(df["posteam"] == df["away_team"])
+
+    df.drop(columns=team_cols, inplace=True)
     return df
 
 
@@ -132,7 +163,12 @@ def aggregate_to_modeling_grain(df: pd.DataFrame, spec: Spec) -> pd.DataFrame:
     reducers = spec.aggregation.reducers
     for reducer_name, cols in reducers.model_dump().items():
         for col in cols:
-            agg_instructions[col] = reducer_name
+            for candidate in [col, f"team1_{col}", f"team2_{col}"]:
+                if candidate in df.columns:
+                    agg_instructions[candidate] = reducer_name
+
+    if spec.target.name in df.columns and spec.target.name not in agg_instructions:
+        agg_instructions[spec.target.name] = "last"
 
     grouped = df.groupby(spec.aggregation.by).agg(agg_instructions).reset_index()
     return grouped
@@ -158,7 +194,8 @@ def select_features(df: pd.DataFrame, spec: Spec) -> pd.DataFrame:
         included.append(spec.target.name)
 
     feature_cols = [c for c in included if c not in spec.id_cols + [spec.target.name]]
-    ordered_cols = spec.id_cols + feature_cols + [spec.target.name]
+    existing_ids = [c for c in spec.id_cols if c in df.columns]
+    ordered_cols = existing_ids + feature_cols + [spec.target.name]
     return df[ordered_cols]
 
 
@@ -189,10 +226,21 @@ def prepare_model_table(spec_path: str) -> Tuple[pd.DataFrame, dict]:
     """
     spec = load_and_validate_spec(spec_path)
     df, paths = load_csvs(spec.csv_glob)
+    raw_count = len(df)
     validate_schema(df, spec)
     df = align_team_perspective(df, spec)
     df = derive_target(df, spec)
     df = aggregate_to_modeling_grain(df, spec)
+
+    if spec.data_grain == "drive" and spec.modeling_grain == "game":
+        if df["game_id"].duplicated().any():
+            raise ValueError("Aggregation produced duplicate game_id rows")
+        if spec.target.name not in df.columns or df[spec.target.name].isna().any():
+            raise ValueError("Target column missing after aggregation")
+        if not set(df[spec.target.name].unique()).issubset({0, 1}):
+            raise ValueError("Target column is not binary after aggregation")
+        print(f"Loaded {raw_count:,} drive rows -> {len(df):,} games")
+
     df = select_features(df, spec)
 
     feature_list = [c for c in df.columns if c not in spec.id_cols + [spec.target.name]]
