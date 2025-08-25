@@ -4,5 +4,12 @@ nfl_data/
 mlruns/ 
 src/mlruns/
 nfl_venv/ 
-NFL_Virtual/
-NFL_Virtual2/
+venv/
+ 
+data/processed/**/*.parquet
+data/splits/**/*.json
+# Only keep V1's Data
+!data/**.csv 
+
+# CSV is from nflreadR R Library
+src/data/**/*.csv

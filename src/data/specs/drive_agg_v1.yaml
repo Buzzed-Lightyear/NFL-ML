@@ -1,0 +1,36 @@
+dataset_name: "drive_agg_v1"
+csv_glob: "data/drive/*/*.csv"
+data_grain: "drive"
+modeling_grain: "game"
+id_cols:
+  - game_id
+  - season
+  - week
+  - home_team
+  - away_team
+  - drive_id
+  - posteam
+  - defteam
+target:
+  name: "team1_win"
+  derive:
+    type: "from_scores"
+    source:
+      team1_score_col: "home_score_final"
+      team2_score_col: "away_score_final"
+team_alignment:
+  canonical: "home_away"
+  # incoming rows are per-possession (posteam/defteam) so we map to home/away perspective
+aggregation:
+  by: ["game_id"]
+  reducers:
+    mean: ["drive_epa", "drive_success", "wp_at_start", "xpass"]
+    sum: ["drive_epa", "penalty_yards", "explosive_plays", "turnovers"]
+    max: ["pressure_rate", "win_prob_swing"]
+    last: ["season", "week", "home_team", "away_team", "home_score_final", "away_score_final"]
+features:
+  include_regex: [".*"]
+  exclude_regex: ["^source_path$"]
+provenance:
+  allow_post_final_columns: true
+
