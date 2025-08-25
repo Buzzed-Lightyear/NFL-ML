@@ -87,6 +87,10 @@ def parse_args():
                         help='Tag describing the run type')
     parser.add_argument('--split-id', type=str, default=None,
                         help='Optional predefined split identifier')
+    parser.add_argument('--data-spec', type=str, default=None,
+                        help='Optional path to YAML dataset spec; if provided, load data via spec.')
+    parser.add_argument('--output-dir', type=str, default=None,
+                        help='Optional output base dir for processed artifacts; defaults to data/processed/<run_id>.')
     parser.add_argument(
         '--ece-bins',
         type=int,
@@ -125,7 +129,39 @@ def main():
                 json.dump({'train': train_years, 'eval': eval_years, 'test': test_years}, f, indent=2)
 
             print("Loading NFL data...")
-            df_combined = load_nfl_data(years=train_years + eval_years + test_years)
+            if args.data_spec:
+                try:
+                    from preprocessing.unified_loader import load_dataset_from_spec
+                    df_combined, data_meta = load_dataset_from_spec(args.data_spec)
+                except Exception as e:
+                    raise RuntimeError(f"Failed to load spec dataset: {e}") from e
+                if df_combined.empty:
+                    raise ValueError("Spec-loaded dataset is empty")
+                if 'season' not in df_combined.columns:
+                    raise ValueError("Spec-loaded dataset must include 'season' column")
+                print("Using data source: spec")
+                print(f"Spec name: {data_meta.get('dataset_name')}")
+                print(f"data_grain: {data_meta.get('data_grain')}")
+                print(f"modeling_grain: {data_meta.get('modeling_grain')}")
+                print(f"input_fingerprint: {data_meta.get('input_fingerprint')}")
+                mlflow.log_params({
+                    "data_spec_path": args.data_spec,
+                    "data_spec_name": data_meta.get("dataset_name"),
+                    "data_grain": data_meta.get("data_grain"),
+                    "modeling_grain": data_meta.get("modeling_grain"),
+                    "input_fingerprint": data_meta.get("input_fingerprint"),
+                })
+                data_source_tag = 'spec'
+                spec_name = data_meta.get("dataset_name")
+            else:
+                df_combined = load_nfl_data(years=train_years + eval_years + test_years)
+                if df_combined.empty:
+                    raise ValueError("Loaded dataset is empty")
+                data_meta = None
+                data_source_tag = 'legacy'
+                spec_name = None
+                print("Using data source: legacy")
+
             mlflow.log_param("dataset_shape", str(df_combined.shape))
 
             train_df = df_combined[df_combined['season'].isin(train_years)].copy()
@@ -136,6 +172,8 @@ def main():
             feature_cols = [c for c in train_df.columns if c not in metadata_cols + [TARGET_COLUMN]]
 
             feature_hash = hashlib.md5(','.join(sorted(feature_cols)).encode()).hexdigest()[:8]
+            mlflow.log_param("feature_count", len(feature_cols))
+            mlflow.log_param("feature_hash", feature_hash)
             data_snapshot_ts = datetime.utcnow().isoformat()
             code_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip()
 
@@ -154,25 +192,44 @@ def main():
             eval_df_meta = enrich(eval_df)
             test_df_meta = enrich(test_df)
 
-            out_dir = Path('data/processed') / run_id
+            if args.output_dir:
+                out_dir = Path(args.output_dir) / run_id
+            else:
+                out_dir = Path('data/processed') / run_id
             out_dir.mkdir(parents=True, exist_ok=True)
+            print(f"Resolved output directory: {out_dir}")
             train_df_meta.to_parquet(out_dir / 'train.parquet', index=False)
             eval_df_meta.to_parquet(out_dir / 'eval.parquet', index=False)
             test_df_meta.to_parquet(out_dir / 'test.parquet', index=False)
+
+            if args.data_spec:
+                mlflow.log_artifact(args.data_spec, artifact_path='specs')
+                with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as tmp_meta_file:
+                    json.dump(data_meta, tmp_meta_file, indent=2)
+                    meta_path = tmp_meta_file.name
+                mlflow.log_artifact(meta_path, artifact_path='specs')
+                os.unlink(meta_path)
+                mlflow.log_artifact(out_dir / 'train.parquet', artifact_path='data')
+                mlflow.log_artifact(out_dir / 'eval.parquet', artifact_path='data')
+                mlflow.log_artifact(out_dir / 'test.parquet', artifact_path='data')
 
             X_train = ensure_float_columns(train_df_meta[feature_cols])
             y_train = train_df_meta[TARGET_COLUMN]
             X_eval = ensure_float_columns(eval_df_meta[feature_cols])
             y_eval = eval_df_meta[TARGET_COLUMN]
 
-            mlflow.set_tags({
+            tags = {
                 'run_type': args.run_type,
                 'split_id': split_id,
                 'feature_hash': feature_hash,
                 'years_train': ','.join(map(str, train_years)),
                 'years_eval': ','.join(map(str, eval_years)),
                 'models': ','.join(models_to_train),
-            })
+                'data_source': data_source_tag,
+            }
+            if spec_name:
+                tags['spec_name'] = spec_name
+            mlflow.set_tags(tags)
 
             results = {}
             model_name_map = {'rf': 'Random Forest', 'svm': 'SVM', 'mlp': 'MLP', 'xgb': 'XGBoost'}
